@@ -59,6 +59,80 @@ class QuotaCardRenderer:
         report = QuotaReport(generated_at=now_text(), summary=build_summary([provider]), providers=[provider], message="这是一条测试告警。")
         return self.render_alert(report)
 
+    def render_dashboard(self, report: QuotaReport) -> Path:
+        filtered = self._filter_abnormal_report(report)
+        if not filtered.providers:
+            message = report.message if not report.providers and report.message else "当前所有额度正常，未发现异常账号"
+            return self.render_empty(message)
+        return self._render(filtered, "dashboard", "额度摘要")
+
+    def render_detail_page(self, report: QuotaReport, page: int, total_pages: int) -> Path:
+        return self._render(report, "detail", f"额度详情 (第 {page}/{total_pages} 页)")
+
+    def render_detail_pages(self, report: QuotaReport, page_size: int = 5) -> list[Path]:
+        page_size = max(1, min(page_size, 20))
+        pages = self._paginate_report(report, page_size)
+        if not pages:
+            return [self.render_empty("暂无额度数据")]
+
+        paths = []
+        total_pages = len(pages)
+        for i, page_report in enumerate(pages, 1):
+            paths.append(self.render_detail_page(page_report, i, total_pages))
+        return paths
+
+    def render_empty(self, message: str) -> Path:
+        report = QuotaReport(generated_at=now_text(), summary={}, providers=[], message=message)
+        return self._render(report, "empty", "提示")
+
+    def _filter_abnormal_report(self, report: QuotaReport) -> QuotaReport:
+        severity_order = {"error": 0, "critical": 1, "warning": 2, "unknown": 3, "ok": 4}
+        def account_rank(account: QuotaAccount) -> int:
+            item_ranks = [severity_order.get(item.status, 5) for item in account.items]
+            return min([severity_order.get(account.status, 5), *item_ranks])
+
+        providers: list[QuotaProvider] = []
+        for provider in report.providers:
+            accounts = []
+            for account in provider.accounts:
+                items = [item for item in account.items if item.status in {"warning", "critical", "unknown", "error"}]
+                if items or account.status in {"warning", "critical", "unknown", "error"}:
+                    if not items:
+                        items = account.items
+                    items = sorted(items, key=lambda x: severity_order.get(x.status, 5))
+                    accounts.append(QuotaAccount(id=account.id, name=account.name, display_name=account.display_name, status=account.status, items=items))
+
+            if accounts:
+                accounts = sorted(accounts, key=account_rank)
+                providers.append(QuotaProvider(name=provider.name, type=provider.type, accounts=accounts))
+
+        providers = sorted(providers, key=lambda provider: min((account_rank(account) for account in provider.accounts), default=5))
+
+        return QuotaReport(generated_at=report.generated_at, summary=report.summary, providers=providers, message=report.message)
+
+    def _paginate_report(self, report: QuotaReport, page_size: int) -> list[QuotaReport]:
+        flat_accounts = []
+        for provider in report.providers:
+            for account in provider.accounts:
+                flat_accounts.append((provider, account))
+
+        if not flat_accounts:
+            return []
+
+        pages = []
+        for i in range(0, len(flat_accounts), page_size):
+            chunk = flat_accounts[i:i + page_size]
+            page_providers_map = {}
+            for prov, acc in chunk:
+                if prov.name not in page_providers_map:
+                    page_providers_map[prov.name] = QuotaProvider(name=prov.name, type=prov.type, accounts=[])
+                page_providers_map[prov.name].accounts.append(acc)
+
+            page_providers = list(page_providers_map.values())
+            pages.append(QuotaReport(generated_at=report.generated_at, summary=report.summary, providers=page_providers, message=report.message))
+
+        return pages
+
     def _render(self, report: QuotaReport, kind: str, mode_text: str) -> Path:
         cleanup_old_files(self.cache_dir)
         height = self._measure_height(report)

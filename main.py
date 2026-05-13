@@ -12,14 +12,14 @@ from astrbot.api.star import Context, Star, register
 try:
     from .client import CPAClient
     from .formatter import format_alert_report, format_quota_report
-    from .models import QuotaReport
+    from .models import QuotaReport, build_summary
     from .renderer import QuotaCardRenderer
     from .state import QuotaStateStore
     from .utils import ConfigError, normalize_cpa_url, plugin_data_dir, sanitize_text
 except ImportError:
     from client import CPAClient
     from formatter import format_alert_report, format_quota_report
-    from models import QuotaReport
+    from models import QuotaReport, build_summary
     from renderer import QuotaCardRenderer
     from state import QuotaStateStore
     from utils import ConfigError, normalize_cpa_url, plugin_data_dir, sanitize_text
@@ -50,23 +50,68 @@ class CPAQuotaBoardPlugin(Star):
 
     @filter.command("额度")
     async def quota(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        yield await self._quota_image_result(event, compact=self._bool_config("compact_mode_default", False), force=False)
+        args = self._parse_args(event)
+        provider = args[0] if args else ""
+        yield await self._quota_image_result(event, compact=self._bool_config("compact_mode_default", False), force=False, provider=provider)
 
     @filter.command("cpa额度")
     async def cpa_quota(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        yield await self._quota_image_result(event, compact=self._bool_config("compact_mode_default", False), force=False)
+        args = self._parse_args(event)
+        provider = args[0] if args else ""
+        yield await self._quota_image_result(event, compact=self._bool_config("compact_mode_default", False), force=False, provider=provider)
 
     @filter.command("quota")
     async def quota_en(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        yield await self._quota_image_result(event, compact=self._bool_config("compact_mode_default", False), force=False)
+        args = self._parse_args(event)
+        provider = args[0] if args else ""
+        yield await self._quota_image_result(event, compact=self._bool_config("compact_mode_default", False), force=False, provider=provider)
 
     @filter.command("额度简洁")
     async def quota_compact(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        yield await self._quota_image_result(event, compact=True, force=False)
+        args = self._parse_args(event)
+        provider = args[0] if args else ""
+        yield await self._quota_image_result(event, compact=True, force=False, provider=provider)
 
     @filter.command("额度刷新")
     async def quota_refresh(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        yield await self._quota_image_result(event, compact=self._bool_config("compact_mode_default", False), force=True)
+        args = self._parse_args(event)
+        provider = args[0] if args else ""
+        yield await self._quota_image_result(event, compact=self._bool_config("compact_mode_default", False), force=True, provider=provider)
+
+    @filter.command("额度摘要")
+    async def quota_dashboard(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        args = self._parse_args(event)
+        provider = args[0] if args else ""
+        yield await self._quota_dashboard_result(event, force=False, provider=provider)
+
+    @filter.command("额度详情分页")
+    async def quota_detail_pages(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        args = self._parse_args(event)
+        provider = ""
+        page = 0
+        page_size = 5
+        numbers: list[int] = []
+
+        for arg in args:
+            if arg.isdigit():
+                numbers.append(int(arg))
+            elif "=" in arg:
+                k, v = arg.split("=", 1)
+                if k in ("page", "p") and v.isdigit():
+                    page = int(v)
+                elif k in ("size", "s", "page_size") and v.isdigit():
+                    page_size = int(v)
+                elif k in ("provider", "prov"):
+                    provider = v
+            else:
+                provider = arg
+
+        if numbers:
+            page = numbers[0]
+        if len(numbers) >= 2:
+            page_size = numbers[1]
+
+        yield await self._quota_detail_pages_result(event, provider=provider, page=page, page_size=page_size)
 
     @filter.command("额度通知开启")
     async def notify_enable(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
@@ -107,26 +152,97 @@ class CPAQuotaBoardPlugin(Star):
                 pass
             self._poll_task = None
 
-    async def _quota_image_result(self, event: AstrMessageEvent, *, compact: bool, force: bool):
+    def _parse_args(self, event: AstrMessageEvent) -> list[str]:
+        message = str(getattr(event, "message_str", "") or "")
+        parts = message.strip().split()
+        return parts[1:] if parts else []
+
+    def _filter_report_by_provider(self, report: QuotaReport, provider_keyword: str) -> QuotaReport:
+        if not provider_keyword:
+            return report
+        keyword = provider_keyword.lower()
+        providers = []
+        for p in report.providers:
+            if keyword in p.name.lower() or keyword in p.type.lower():
+                providers.append(p)
+        return QuotaReport(
+            generated_at=report.generated_at,
+            summary=build_summary(providers),
+            providers=providers,
+            message=report.message
+        )
+
+    async def _handle_render_error(self, event: AstrMessageEvent, exc: Exception, title_suffix: str):
+        if isinstance(exc, ConfigError):
+            report = QuotaReport.empty(str(exc))
+            title = "CPA 额度看板 - 配置错误"
+        else:
+            logger.error(f"CPA 额度看板{title_suffix}失败：%s", sanitize_text(exc))
+            report = QuotaReport.empty(f"{title_suffix}失败：{sanitize_text(exc)}")
+            title = f"CPA 额度看板 - {title_suffix}失败"
+
+        if self._response_format() == "text":
+            return event.plain_result(format_quota_report(report, compact=False, title=title))
+        path = self.renderer.render_overview(report)
+        return event.chain_result(self._image_chain(path))
+
+    async def _quota_image_result(self, event: AstrMessageEvent, *, compact: bool, force: bool, provider: str = ""):
         try:
             report = await self._fetch_report(force=force)
+            if provider:
+                report = self._filter_report_by_provider(report, provider)
+                if not report.providers:
+                    report.message = f"未找到匹配 '{provider}' 的额度数据"
+
             if self._response_format() == "text":
                 return event.plain_result(format_quota_report(report, compact=compact))
             path = self.renderer.render_compact(report) if compact else self.renderer.render_overview(report)
             return event.chain_result(self._image_chain(path))
-        except ConfigError as exc:
-            report = QuotaReport.empty(str(exc))
+        except Exception as exc:
+            return await self._handle_render_error(event, exc, "查询")
+
+    async def _quota_dashboard_result(self, event: AstrMessageEvent, *, force: bool, provider: str = ""):
+        try:
+            report = await self._fetch_report(force=force)
+            if provider:
+                report = self._filter_report_by_provider(report, provider)
+                if not report.providers:
+                    report.message = f"未找到匹配 '{provider}' 的额度数据"
+
             if self._response_format() == "text":
-                return event.plain_result(format_quota_report(report, compact=False, title="CPA 额度看板 - 配置错误"))
-            path = self.renderer.render_overview(report)
+                return event.plain_result(format_quota_report(report, compact=True, title="CPA 额度看板 - 摘要"))
+
+            path = self.renderer.render_dashboard(report)
             return event.chain_result(self._image_chain(path))
         except Exception as exc:
-            logger.error("CPA 额度看板查询失败：%s", sanitize_text(exc))
-            report = QuotaReport.empty(f"查询失败：{sanitize_text(exc)}")
+            return await self._handle_render_error(event, exc, "摘要")
+
+    async def _quota_detail_pages_result(self, event: AstrMessageEvent, *, provider: str, page: int, page_size: int):
+        try:
+            report = await self._fetch_report(force=False)
+            if provider:
+                report = self._filter_report_by_provider(report, provider)
+                if not report.providers:
+                    report.message = f"未找到匹配 '{provider}' 的额度数据"
+
             if self._response_format() == "text":
-                return event.plain_result(format_quota_report(report, compact=False, title="CPA 额度看板 - 查询失败"))
-            path = self.renderer.render_overview(report)
-            return event.chain_result(self._image_chain(path))
+                return event.plain_result(format_quota_report(report, compact=False, title=f"CPA 额度看板 - 详情" + (f" (第{page}页)" if page > 0 else "")))
+
+            paths = self.renderer.render_detail_pages(report, page_size=page_size)
+            if not paths:
+                path = self.renderer.render_empty("暂无额度数据")
+                return event.chain_result(self._image_chain(path))
+
+            chain = MessageChain()
+            if page > 0:
+                page = max(1, min(page, len(paths)))
+                chain = chain.file_image(str(paths[page - 1]))
+            else:
+                for p in paths:
+                    chain = chain.file_image(str(p))
+            return event.chain_result(chain)
+        except Exception as exc:
+            return await self._handle_render_error(event, exc, "详情分页")
 
     async def _fetch_report(self, *, force: bool):
         now = time.time()
