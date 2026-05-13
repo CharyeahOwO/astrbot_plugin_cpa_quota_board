@@ -103,11 +103,13 @@ class AuthFile:
 
     @classmethod
     def from_api(cls, data: dict[str, Any]) -> "AuthFile":
-        metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
-        attributes = data.get("attributes") if isinstance(data.get("attributes"), dict) else {}
-        name = str(data.get("name") or data.get("id") or "unknown")
+        raw_metadata = data.get("metadata")
+        raw_attributes = data.get("attributes")
+        metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
+        attributes: dict[str, Any] = raw_attributes if isinstance(raw_attributes, dict) else {}
+        name = str(data.get("name") or data.get("file") or data.get("filename") or data.get("path") or data.get("id") or "unknown")
         auth_index = str(data.get("auth_index") or data.get("auth-index") or data.get("authIndex") or data.get("index") or data.get("id") or name)
-        provider = str(data.get("provider") or data.get("type") or metadata.get("provider") or metadata.get("type") or data.get("account_type") or metadata.get("account_type") or "unknown").lower()
+        provider = str(data.get("provider") or data.get("provider_type") or data.get("providerType") or data.get("type") or metadata.get("provider") or metadata.get("provider_type") or metadata.get("providerType") or metadata.get("type") or data.get("account_type") or metadata.get("account_type") or _infer_provider(name) or "unknown").lower()
         email = str(data.get("email") or metadata.get("email") or data.get("account") or metadata.get("account") or attributes.get("email") or "")
         return cls(
             id=str(data.get("id") or auth_index or name),
@@ -117,8 +119,8 @@ class AuthFile:
             email=email,
             status=str(data.get("status") or ""),
             status_message=str(data.get("status_message") or data.get("status-message") or ""),
-            disabled=bool(data.get("disabled", False)),
-            unavailable=bool(data.get("unavailable", False)),
+            disabled=_as_bool(data.get("disabled", False)),
+            unavailable=_as_bool(data.get("unavailable", False)),
             raw=data,
         )
 
@@ -152,3 +154,28 @@ def build_summary(providers: list[QuotaProvider]) -> dict[str, int]:
             if account.status in summary:
                 summary[account.status] += 1
     return summary
+
+
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on", "disabled", "unavailable"}
+    return bool(value)
+
+
+def _infer_provider(name: str) -> str:
+    value = name.lower()
+    if "antigravity" in value:
+        return "antigravity"
+    if "gemini-cli" in value or value.startswith("gemini-") or "google" in value:
+        return "gemini-cli"
+    if "codex" in value or "openai" in value or "chatgpt" in value:
+        return "codex"
+    if "claude" in value or "anthropic" in value:
+        return "claude"
+    if "kimi" in value:
+        return "kimi"
+    return ""

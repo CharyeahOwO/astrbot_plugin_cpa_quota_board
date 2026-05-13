@@ -50,6 +50,7 @@ https://api.example.com/management.html#/
 - `critical_percent`：危险额度阈值，默认 `5`。
 - `enable_quota_notify`：是否启用额度通知，默认 `false`。
 - `enable_usage_statistics`：是否开启 CLIProxyAPI 用量统计发布，默认 `false`。插件只调用 `/v0/management/usage-statistics-enabled`，不会读取 `/usage-queue`。
+- `response_format`：查询结果返回格式，`text` 或 `image`，默认 `text`。排查错误时建议保持文本模式。
 - `render_high_resolution`：是否高清渲染图片，默认 `true`。
 - `max_accounts_per_provider`：每类 provider 最多渲染账号数，默认 `20`。
 - `compact_mode_default`：默认是否使用简洁模式，默认 `false`。

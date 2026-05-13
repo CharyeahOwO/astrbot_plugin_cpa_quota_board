@@ -11,12 +11,14 @@ from astrbot.api.star import Context, Star, register
 
 try:
     from .client import CPAClient
+    from .formatter import format_alert_report, format_quota_report
     from .models import QuotaReport
     from .renderer import QuotaCardRenderer
     from .state import QuotaStateStore
     from .utils import ConfigError, normalize_cpa_url, plugin_data_dir, sanitize_text
 except ImportError:
     from client import CPAClient
+    from formatter import format_alert_report, format_quota_report
     from models import QuotaReport
     from renderer import QuotaCardRenderer
     from state import QuotaStateStore
@@ -108,15 +110,21 @@ class CPAQuotaBoardPlugin(Star):
     async def _quota_image_result(self, event: AstrMessageEvent, *, compact: bool, force: bool):
         try:
             report = await self._fetch_report(force=force)
+            if self._response_format() == "text":
+                return event.plain_result(format_quota_report(report, compact=compact))
             path = self.renderer.render_compact(report) if compact else self.renderer.render_overview(report)
             return event.chain_result(self._image_chain(path))
         except ConfigError as exc:
             report = QuotaReport.empty(str(exc))
+            if self._response_format() == "text":
+                return event.plain_result(format_quota_report(report, compact=False, title="CPA 额度看板 - 配置错误"))
             path = self.renderer.render_overview(report)
             return event.chain_result(self._image_chain(path))
         except Exception as exc:
             logger.error("CPA 额度看板查询失败：%s", sanitize_text(exc))
             report = QuotaReport.empty(f"查询失败：{sanitize_text(exc)}")
+            if self._response_format() == "text":
+                return event.plain_result(format_quota_report(report, compact=False, title="CPA 额度看板 - 查询失败"))
             path = self.renderer.render_overview(report)
             return event.chain_result(self._image_chain(path))
 
@@ -141,8 +149,11 @@ class CPAQuotaBoardPlugin(Star):
                 changes = await self.state.diff_and_save(report)
                 targets = await self.state.list_notify_targets()
                 if changes and targets:
-                    path = self.renderer.render_alert(report, changes)
-                    chain = self._image_chain(path)
+                    if self._response_format() == "text":
+                        chain = MessageChain().message(format_alert_report(report, changes))
+                    else:
+                        path = self.renderer.render_alert(report, changes)
+                        chain = self._image_chain(path)
                     for target in targets:
                         try:
                             await self.context.send_message(target, chain)
@@ -197,6 +208,10 @@ class CPAQuotaBoardPlugin(Star):
     def _image_chain(self, path: Path) -> MessageChain:
         return MessageChain().file_image(str(path))
 
+    def _response_format(self) -> str:
+        value = str(self.config.get("response_format", "text")).strip().lower()
+        return "image" if value in {"image", "img", "图片"} else "text"
+
     def _load_config(self) -> dict[str, Any]:
         try:
             config = self.context.get_config()
@@ -231,6 +246,7 @@ DEFAULT_CONFIG = {
     "critical_percent": 5,
     "enable_quota_notify": False,
     "enable_usage_statistics": False,
+    "response_format": "text",
     "render_high_resolution": True,
     "max_accounts_per_provider": 20,
     "compact_mode_default": False,

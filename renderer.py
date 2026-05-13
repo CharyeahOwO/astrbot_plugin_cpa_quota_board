@@ -193,7 +193,7 @@ class QuotaCardRenderer:
 
     def _tag(self, draw: ImageDraw.ImageDraw, text: str, color: tuple[int, int, int], x: int, y: int, scale: int) -> None:
         w = self._tag_width(text, scale)
-        bg = tuple(max(0, c // 5) for c in color)
+        bg = (max(0, color[0] // 5), max(0, color[1] // 5), max(0, color[2] // 5))
         self._rounded(draw, (x, y, x + w, y + 24 * scale), 12 * scale, bg, None)
         draw.text((x + 10 * scale, y + 4 * scale), text, font=self.fonts["tiny"], fill=color)
 
@@ -252,7 +252,7 @@ class QuotaCardRenderer:
 
     def _text_width(self, draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont) -> int:
         box = draw.textbbox((0, 0), text, font=font)
-        return box[2] - box[0]
+        return int(box[2] - box[0])
 
     def _load_fonts(self) -> dict[str, ImageFont.FreeTypeFont | ImageFont.ImageFont]:
         font_path = self._find_font()

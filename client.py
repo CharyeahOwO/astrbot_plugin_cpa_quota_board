@@ -92,7 +92,7 @@ class CPAClient:
 
     async def get_auth_files(self) -> list[AuthFile]:
         data = await self._request("GET", "auth-files")
-        files = data.get("files", []) if isinstance(data, dict) else data if isinstance(data, list) else []
+        files = self._extract_auth_file_items(data)
         if not isinstance(files, list):
             return []
         return [AuthFile.from_api(item) for item in files if isinstance(item, dict)]
@@ -121,8 +121,8 @@ class CPAClient:
         active_auths = [auth for auth in auth_files if not auth.disabled]
         if not active_auths:
             if auth_files:
-                providers = sorted({self._canonical_provider(auth.provider) for auth in auth_files})
-                return QuotaReport.empty(f"API 返回了 {len(auth_files)} 个账号，但账号均已禁用或不可用：{', '.join(providers)}")
+                provider_names = sorted({self._canonical_provider(auth.provider) for auth in auth_files})
+                return QuotaReport.empty(f"API 返回了 {len(auth_files)} 个账号，但账号均已禁用或不可用：{', '.join(provider_names)}")
             return QuotaReport.empty("API 返回为空，未发现可查询额度的账号。")
 
         grouped: dict[str, list[AuthFile]] = defaultdict(list)
@@ -136,10 +136,10 @@ class CPAClient:
             results = await asyncio.gather(*(self._fetch_account(provider_type, auth) for auth in accounts), return_exceptions=True)
             quota_accounts: list[QuotaAccount] = []
             for auth, result in zip(accounts, results):
-                if isinstance(result, Exception):
+                if isinstance(result, BaseException):
                     quota_accounts.append(self._account_error(auth, sanitize_text(result)))
-                else:
-                    quota_accounts.append(result)
+                    continue
+                quota_accounts.append(result)
             providers.append(QuotaProvider(name=PROVIDER_NAMES.get(provider_type, provider_type), type=provider_type, accounts=quota_accounts))
 
         return QuotaReport(generated_at=now_text(), summary=build_summary(providers), providers=providers)
@@ -335,3 +335,24 @@ class CPAClient:
             if isinstance(value, (dict, list)):
                 return value
         return data
+
+    def _extract_auth_file_items(self, data: Any) -> list[Any]:
+        if isinstance(data, list):
+            return data
+        if not isinstance(data, dict):
+            return []
+        for key in ("files", "auth_files", "authFiles", "items", "list", "results"):
+            value = data.get(key)
+            if isinstance(value, list):
+                return value
+        for key in ("data", "result", "response", "body"):
+            value = data.get(key)
+            if isinstance(value, str):
+                try:
+                    value = json.loads(value)
+                except json.JSONDecodeError:
+                    continue
+            nested = self._extract_auth_file_items(value)
+            if nested:
+                return nested
+        return []

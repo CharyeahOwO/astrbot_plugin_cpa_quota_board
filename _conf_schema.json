@@ -44,6 +44,12 @@
     "type": "bool",
     "default": false
   },
+  "response_format": {
+    "description": "查询结果返回格式：text 为文本，image 为图片。默认 text，便于清楚显示错误原因。",
+    "type": "string",
+    "default": "text",
+    "hint": "text 或 image"
+  },
   "render_high_resolution": {
     "description": "是否高清渲染图片",
     "type": "bool",
