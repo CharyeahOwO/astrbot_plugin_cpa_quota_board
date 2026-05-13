@@ -126,6 +126,7 @@ class CPAQuotaBoardPlugin(Star):
             return self._last_report
         client = self._client()
         report = await client.fetch_all_quotas()
+        self._log_report_summary(report)
         self._last_report = report
         self._last_fetch_at = now
         return report
@@ -135,6 +136,7 @@ class CPAQuotaBoardPlugin(Star):
         while True:
             try:
                 report = await self._client().fetch_all_quotas()
+                self._log_report_summary(report)
                 self._last_poll_time = report.generated_at
                 changes = await self.state.diff_and_save(report)
                 targets = await self.state.list_notify_targets()
@@ -160,6 +162,22 @@ class CPAQuotaBoardPlugin(Star):
             return
         except Exception as exc:
             logger.warning("CPA 额度看板同步用量统计发布开关失败：%s", sanitize_text(exc))
+
+    def _log_report_summary(self, report: QuotaReport) -> None:
+        lines = [f"providers={len(report.providers)} summary={report.summary}"]
+        for provider in report.providers:
+            lines.append(f"provider={sanitize_text(provider.name)} accounts={len(provider.accounts)}")
+            for account in provider.accounts:
+                lines.append(f"  account={sanitize_text(account.display_name)} status={account.status} items={len(account.items)}")
+                for item in account.items:
+                    lines.append(
+                        "    item="
+                        f"{sanitize_text(item.label)} percent={item.percent if item.percent is not None else '--'} "
+                        f"status={item.status} reset_at={sanitize_text(item.reset_at)}"
+                    )
+        if report.message:
+            lines.append(f"message={sanitize_text(report.message)}")
+        logger.info("CPA 额度看板渲染数据摘要：\n%s", "\n".join(lines))
 
     def _client(self) -> CPAClient:
         cpa_url = normalize_cpa_url(str(self.config.get("cpa_url", "")))

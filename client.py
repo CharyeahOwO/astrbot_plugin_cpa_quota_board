@@ -115,7 +115,10 @@ class CPAClient:
 
         supported = [auth for auth in auth_files if self._canonical_provider(auth.provider) in PROVIDER_NAMES and not auth.disabled]
         if not supported:
-            return QuotaReport.empty("未发现可查询额度的 OAuth 账号。")
+            if auth_files:
+                providers = sorted({self._canonical_provider(auth.provider) for auth in auth_files})
+                return QuotaReport.empty(f"API 返回了 {len(auth_files)} 个账号，但未发现支持的 provider：{', '.join(providers)}")
+            return QuotaReport.empty("API 返回为空，未发现可查询额度的账号。")
 
         grouped: dict[str, list[AuthFile]] = defaultdict(list)
         for auth in supported:
@@ -177,13 +180,10 @@ class CPAClient:
     def _parse_google_quota(self, data: Any, provider_type: str) -> list[QuotaItem]:
         clean = redact_obj(data)
         candidates: list[dict[str, Any]] = []
-        if isinstance(data, dict):
-            for key in ("quotas", "quota", "model_quotas", "models", "availableModels", "available_models"):
-                value = data.get(key)
-                if isinstance(value, list):
-                    candidates.extend(item for item in value if isinstance(item, dict))
-                elif isinstance(value, dict):
-                    candidates.extend(dict(item, id=name) for name, item in value.items() if isinstance(item, dict))
+        if isinstance(data, list):
+            candidates.extend(item for item in data if isinstance(item, dict))
+        elif isinstance(data, dict):
+            candidates.extend(self._quota_candidates(data))
             if not candidates:
                 candidates.append(data)
         items: list[QuotaItem] = []
@@ -196,8 +196,11 @@ class CPAClient:
             reset_at = format_reset_time(entry.get("resetAt") or entry.get("reset_at") or entry.get("resetTime") or entry.get("refreshTime"))
             status = status_from_percent(percent, self.warning_percent, self.critical_percent)
             items.append(QuotaItem(id=item_id, label=label, percent=percent, reset_at=reset_at, status=status, raw_message=""))
-        if not items and isinstance(clean, dict):
-            message = sanitize_text(clean.get("message") or clean.get("error") or "未返回可识别额度")
+        if not items:
+            if isinstance(clean, dict):
+                message = sanitize_text(clean.get("message") or clean.get("error") or "接口成功但未解析到额度数据")
+            else:
+                message = "接口成功但未解析到额度数据"
             items.append(QuotaItem(id="quota", label=self._default_google_label(provider_type), percent=None, status="unknown", raw_message=message))
         return items
 
@@ -237,7 +240,41 @@ class CPAClient:
 
     def _looks_like_quota(self, data: dict[str, Any]) -> bool:
         keys = {str(key).lower() for key in data.keys()}
-        return bool(keys & {"quota", "limit", "remaining", "used", "resetat", "reset_at", "percent"})
+        return bool(keys & {"quota", "quotas", "limit", "remaining", "remainingpercent", "remaining_percent", "available", "used", "usage", "resetat", "reset_at", "percent", "ratelimits"})
+
+    def _quota_candidates(self, data: dict[str, Any]) -> list[dict[str, Any]]:
+        candidates: list[dict[str, Any]] = []
+        stack: list[Any] = [data]
+        seen = 0
+        while stack and seen < 200:
+            seen += 1
+            current = stack.pop()
+            if isinstance(current, dict):
+                if self._looks_like_quota(current):
+                    candidates.append(current)
+                for key, value in current.items():
+                    normalized = str(key).lower()
+                    if normalized in {"quotas", "quota", "model_quotas", "models", "availablemodels", "available_models", "ratelimits", "rate_limits", "limits"}:
+                        if isinstance(value, dict):
+                            for name, item in value.items():
+                                if isinstance(item, dict):
+                                    merged = dict(item)
+                                    merged.setdefault("id", name)
+                                    stack.append(merged)
+                        elif isinstance(value, list):
+                            stack.extend(item for item in value if isinstance(item, dict))
+                    elif isinstance(value, (dict, list)):
+                        stack.append(value)
+            elif isinstance(current, list):
+                stack.extend(item for item in current if isinstance(item, dict))
+        unique: list[dict[str, Any]] = []
+        signatures: set[str] = set()
+        for item in candidates:
+            signature = json.dumps(redact_obj(item), ensure_ascii=False, sort_keys=True, default=str)[:400]
+            if signature not in signatures:
+                signatures.add(signature)
+                unique.append(item)
+        return unique
 
     def _google_quota_body(self, auth: AuthFile) -> dict[str, Any]:
         project_id = self._find_project_id(auth)
@@ -247,7 +284,9 @@ class CPAClient:
         return body
 
     def _find_project_id(self, auth: AuthFile) -> str:
-        for container in (auth.raw, auth.raw.get("metadata", {}) if isinstance(auth.raw.get("metadata"), dict) else {}):
+        metadata = auth.raw.get("metadata", {}) if isinstance(auth.raw.get("metadata"), dict) else {}
+        attributes = auth.raw.get("attributes", {}) if isinstance(auth.raw.get("attributes"), dict) else {}
+        for container in (auth.raw, metadata, attributes):
             for key in ("project_id", "projectId", "project"):
                 if container.get(key):
                     return str(container[key])

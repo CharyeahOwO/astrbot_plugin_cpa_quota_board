@@ -25,13 +25,13 @@
 `cpa_url` 必须填写 CLIProxyAPI 根地址，例如：
 
 ```text
-https://api.nyaovo.com
+https://api.example.com
 ```
 
 不要填写管理面板页面地址，例如不要填：
 
 ```text
-https://api.nyaovo.com/management.html#/
+https://api.example.com/management.html#/
 ```
 
 插件内部会自动拼接：

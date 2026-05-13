@@ -1,6 +1,6 @@
 {
   "cpa_url": {
-    "description": "CLIProxyAPI 根地址，例如 https://api.nyaovo.com。不要填写 /management.html#/ 页面地址。",
+    "description": "CLIProxyAPI 根地址，例如 https://api.example.com。不要填写 /management.html#/ 页面地址。",
     "type": "string",
     "hint": "https://api.example.com"
   },
