@@ -37,8 +37,8 @@ class QuotaCardRenderer:
         self.cache_dir = data_dir / "cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.scale = 2 if high_resolution else 1
-        self.width = 740
-        self.margin = 24
+        self.width = 660
+        self.margin = 18
         self.fonts = self._load_fonts()
 
     def render_overview(self, report: QuotaReport) -> Path:
@@ -77,7 +77,7 @@ class QuotaCardRenderer:
             for provider in report.providers:
                 y = self._provider(draw, provider, y, scale)
 
-        self._footer(draw, max(y + 4, height - 34), scale)
+        self._footer(draw, max(y + 2, height - 28), scale)
         if scale != 1:
             image = image.resize((self.width, height), Image.Resampling.LANCZOS)
         output = self.cache_dir / f"quota_{kind}_{uuid.uuid4().hex}.png"
@@ -87,14 +87,14 @@ class QuotaCardRenderer:
     def _header(self, draw: ImageDraw.ImageDraw, report: QuotaReport, mode_text: str, y: int, scale: int) -> int:
         x = self.margin * scale
         draw.text((x, y * scale), "CPA 额度看板", font=self.fonts["title"], fill=(245, 248, 255))
-        self._tag(draw, mode_text, STATUS_COLORS["unknown"], x + 202 * scale, y * scale + 3 * scale, scale)
-        draw.text((x, y * scale + 38 * scale), f"生成时间 {report.generated_at}", font=self.fonts["small"], fill=(148, 163, 184))
-        return y + 66
+        self._tag(draw, mode_text, STATUS_COLORS["unknown"], x + 186 * scale, y * scale + 3 * scale, scale)
+        draw.text((x, y * scale + 35 * scale), f"生成时间 {report.generated_at}", font=self.fonts["small"], fill=(148, 163, 184))
+        return y + 56
 
     def _summary(self, draw: ImageDraw.ImageDraw, report: QuotaReport, y: int, scale: int) -> int:
         x = self.margin * scale
         gap = 8 * scale
-        width = (self.width - self.margin * 2 - 8 * 4) // 5
+        width = (self.width - self.margin * 2 - 8 * 2) // 3
         items = [
             ("总账号", report.summary.get("total_accounts", 0), (96, 165, 250)),
             ("正常", report.summary.get("ok", 0), STATUS_COLORS["ok"]),
@@ -103,20 +103,23 @@ class QuotaCardRenderer:
             ("错误", report.summary.get("error", 0), STATUS_COLORS["error"]),
         ]
         for index, (label, value, color) in enumerate(items):
-            left = x + index * ((width * scale) + gap)
-            self._rounded(draw, (left, y * scale, left + width * scale, y * scale + 44 * scale), 12 * scale, (23, 31, 47), (42, 54, 76))
-            draw.text((left + 12 * scale, y * scale + 7 * scale), str(value), font=self.fonts["metric"], fill=color)
-            draw.text((left + 50 * scale, y * scale + 14 * scale), label, font=self.fonts["small"], fill=(198, 208, 222))
-        return y + 58
+            row = index // 3
+            col = index % 3
+            left = x + col * ((width * scale) + gap)
+            top = y * scale + row * 38 * scale
+            self._rounded(draw, (left, top, left + width * scale, top + 31 * scale), 10 * scale, (23, 31, 47), (42, 54, 76))
+            draw.text((left + 10 * scale, top + 4 * scale), str(value), font=self.fonts["metric"], fill=color)
+            draw.text((left + 47 * scale, top + 8 * scale), label, font=self.fonts["small"], fill=(198, 208, 222))
+        return y + 82
 
     def _provider(self, draw: ImageDraw.ImageDraw, provider: QuotaProvider, y: int, scale: int) -> int:
         x = self.margin * scale
         w = (self.width - self.margin * 2) * scale
         h = self._provider_height(provider) * scale
-        self._rounded(draw, (x, y * scale, x + w, y * scale + h), 16 * scale, (19, 27, 42), (43, 55, 76))
+        self._rounded(draw, (x, y * scale, x + w, y * scale + h), 14 * scale, (19, 27, 42), (43, 55, 76))
         title = f"{provider.name} · {len(provider.accounts)} 个账号"
-        draw.text((x + 16 * scale, y * scale + 13 * scale), self._fit(title, 36), font=self.fonts["section"], fill=(232, 238, 248))
-        y += 44
+        draw.text((x + 14 * scale, y * scale + 10 * scale), self._fit(title, 32), font=self.fonts["section"], fill=(232, 238, 248))
+        y += 38
         if not provider.accounts:
             draw.text((x + 16 * scale, y * scale), "暂无账号", font=self.fonts["body"], fill=(148, 163, 184))
             return y + 34
@@ -125,23 +128,23 @@ class QuotaCardRenderer:
         return y + 12
 
     def _account(self, draw: ImageDraw.ImageDraw, account: QuotaAccount, y: int, scale: int) -> int:
-        x = (self.margin + 12) * scale
-        w = (self.width - self.margin * 2 - 24) * scale
+        x = (self.margin + 9) * scale
+        w = (self.width - self.margin * 2 - 18) * scale
         h = self._account_height(account) * scale
         self._rounded(draw, (x, y * scale, x + w, y * scale + h), 12 * scale, (24, 34, 52), (49, 63, 86))
         name = self._fit(account.display_name, 42)
-        draw.text((x + 14 * scale, y * scale + 10 * scale), name, font=self.fonts["account"], fill=(245, 248, 255))
+        draw.text((x + 12 * scale, y * scale + 8 * scale), name, font=self.fonts["account"], fill=(245, 248, 255))
         tag_w = self._tag_width(STATUS_LABELS.get(account.status, account.status), scale)
-        self._tag(draw, STATUS_LABELS.get(account.status, account.status), STATUS_COLORS.get(account.status, STATUS_COLORS["unknown"]), x + w - tag_w - 14 * scale, y * scale + 9 * scale, scale)
-        y += 42
+        self._tag(draw, STATUS_LABELS.get(account.status, account.status), STATUS_COLORS.get(account.status, STATUS_COLORS["unknown"]), x + w - tag_w - 12 * scale, y * scale + 7 * scale, scale)
+        y += 36
         items = account.items or [QuotaItem(id="empty", label="暂无可展示额度项", percent=None, status="unknown", raw_message="未解析到额度数据")]
         for item in items:
             y = self._quota_item(draw, item, y, scale)
         return y + 10
 
     def _quota_item(self, draw: ImageDraw.ImageDraw, item: QuotaItem, y: int, scale: int) -> int:
-        x = (self.margin + 26) * scale
-        w = (self.width - self.margin * 2 - 52) * scale
+        x = (self.margin + 22) * scale
+        w = (self.width - self.margin * 2 - 44) * scale
         color = STATUS_COLORS.get(item.status, STATUS_COLORS["unknown"])
         label = self._fit(item.label, 34)
         percent = "--" if item.percent is None else f"{item.percent}%"
@@ -149,7 +152,7 @@ class QuotaCardRenderer:
         percent_w = self._text_width(draw, percent, self.fonts["body"])
         draw.text((x + w - percent_w, y * scale), percent, font=self.fonts["body"], fill=color)
 
-        bar_y = y * scale + 25 * scale
+        bar_y = y * scale + 26 * scale
         self._rounded(draw, (x, bar_y, x + w, bar_y + 8 * scale), 4 * scale, (48, 58, 76), None)
         if item.percent is not None:
             fill_w = max(4 * scale, math.floor(w * item.percent / 100))
@@ -165,16 +168,16 @@ class QuotaCardRenderer:
         if meta_parts:
             meta = self._fit(" · ".join(meta_parts), 58)
             draw.text((x, y * scale + 39 * scale), meta, font=self.fonts["tiny"], fill=(148, 163, 184))
-            return y + 62
-        return y + 48
+            return y + 57
+        return y + 44
 
     def _empty_state(self, draw: ImageDraw.ImageDraw, message: str, y: int, scale: int) -> int:
         x = self.margin * scale
         w = (self.width - self.margin * 2) * scale
-        self._rounded(draw, (x, y * scale, x + w, y * scale + 96 * scale), 16 * scale, (24, 34, 52), (62, 74, 98))
-        draw.text((x + 18 * scale, y * scale + 24 * scale), "暂无额度数据", font=self.fonts["section"], fill=(232, 238, 248))
-        draw.text((x + 18 * scale, y * scale + 58 * scale), self._fit(sanitize_text(message), 58), font=self.fonts["body"], fill=(169, 181, 199))
-        return y + 110
+        self._rounded(draw, (x, y * scale, x + w, y * scale + 82 * scale), 14 * scale, (24, 34, 52), (62, 74, 98))
+        draw.text((x + 16 * scale, y * scale + 18 * scale), "暂无额度数据", font=self.fonts["section"], fill=(232, 238, 248))
+        draw.text((x + 16 * scale, y * scale + 50 * scale), self._fit(sanitize_text(message), 48), font=self.fonts["body"], fill=(169, 181, 199))
+        return y + 94
 
     def _footer(self, draw: ImageDraw.ImageDraw, y: int, scale: int) -> None:
         x = self.margin * scale
@@ -201,9 +204,9 @@ class QuotaCardRenderer:
         return (len(text) * 13 + 22) * scale
 
     def _measure_height(self, report: QuotaReport) -> int:
-        height = self.margin + 66 + 58 + 14 + 34
+        height = self.margin + 56 + 82 + 10 + 28
         if not report.providers:
-            return height + 110
+            return height + 94
         for provider in report.providers:
             height += self._provider_height(provider) + 12
         return max(260, height)
@@ -211,12 +214,12 @@ class QuotaCardRenderer:
     def _provider_height(self, provider: QuotaProvider) -> int:
         if not provider.accounts:
             return 84
-        return 44 + sum(self._account_height(account) + 10 for account in provider.accounts) + 4
+        return 38 + sum(self._account_height(account) + 8 for account in provider.accounts) + 4
 
     def _account_height(self, account: QuotaAccount) -> int:
         items = account.items or [QuotaItem(id="empty", label="暂无可展示额度项", percent=None, status="unknown", raw_message="未解析到额度数据")]
-        item_height = sum(62 if (item.raw_message and item.status in {"unknown", "error"}) or (not item.reset_at and item.status in {"unknown", "error"}) else 48 for item in items)
-        return 42 + item_height + 10
+        item_height = sum(57 if (item.raw_message and item.status in {"unknown", "error"}) or (not item.reset_at and item.status in {"unknown", "error"}) else 44 for item in items)
+        return 36 + item_height + 8
 
     def _filter_report(self, report: QuotaReport) -> QuotaReport:
         providers: list[QuotaProvider] = []
@@ -263,9 +266,9 @@ class QuotaCardRenderer:
             return ImageFont.load_default()
 
         return {
-            "title": load(28),
-            "section": load(20),
-            "metric": load(22),
+            "title": load(27),
+            "section": load(19),
+            "metric": load(21),
             "account": load(18),
             "body": load(17),
             "small": load(14),
