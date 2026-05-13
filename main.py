@@ -11,11 +11,13 @@ from astrbot.api.star import Context, Star, register
 
 try:
     from .client import CPAClient
+    from .models import QuotaReport
     from .renderer import QuotaCardRenderer
     from .state import QuotaStateStore
     from .utils import ConfigError, normalize_cpa_url, plugin_data_dir, sanitize_text
 except ImportError:
     from client import CPAClient
+    from models import QuotaReport
     from renderer import QuotaCardRenderer
     from state import QuotaStateStore
     from utils import ConfigError, normalize_cpa_url, plugin_data_dir, sanitize_text
@@ -38,8 +40,7 @@ class CPAQuotaBoardPlugin(Star):
         self._last_poll_time = "从未巡检"
         self._cache_seconds = 10
 
-    @filter.on_bot_init_complete()
-    async def on_bot_init_complete(self):
+    async def initialize(self):
         await self._sync_usage_statistics_option()
         if self._bool_config("enable_quota_notify", False):
             self._poll_task = asyncio.create_task(self._poll_loop())
@@ -110,15 +111,11 @@ class CPAQuotaBoardPlugin(Star):
             path = self.renderer.render_compact(report) if compact else self.renderer.render_overview(report)
             return event.chain_result(self._image_chain(path))
         except ConfigError as exc:
-            from models import QuotaReport
-
             report = QuotaReport.empty(str(exc))
             path = self.renderer.render_overview(report)
             return event.chain_result(self._image_chain(path))
         except Exception as exc:
             logger.error("CPA 额度看板查询失败：%s", sanitize_text(exc))
-            from models import QuotaReport
-
             report = QuotaReport.empty(f"查询失败：{sanitize_text(exc)}")
             path = self.renderer.render_overview(report)
             return event.chain_result(self._image_chain(path))
