@@ -30,9 +30,9 @@ PLUGIN_NAME = "astrbot_plugin_cpa_quota_board"
 
 @register(PLUGIN_NAME, "MuLingQwQ", "CPA 额度看板", "0.1.0")
 class CPAQuotaBoardPlugin(Star):
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config: Any | None = None):
         super().__init__(context)
-        self.config = self._load_config()
+        self.config = self._load_config(config)
         self.data_dir = plugin_data_dir(PLUGIN_NAME)
         self.state = QuotaStateStore(self.data_dir)
         self.renderer = QuotaCardRenderer(self.data_dir, high_resolution=self._bool_config("render_high_resolution", True))
@@ -212,13 +212,21 @@ class CPAQuotaBoardPlugin(Star):
         value = str(self.config.get("response_format", "text")).strip().lower()
         return "image" if value in {"image", "img", "图片"} else "text"
 
-    def _load_config(self) -> dict[str, Any]:
+    def _load_config(self, config: Any | None = None) -> dict[str, Any]:
+        if isinstance(config, dict):
+            return {key: config.get(key, default) for key, default in DEFAULT_CONFIG.items()}
+        if config is not None and hasattr(config, "get"):
+            return {key: config.get(key, default) for key, default in DEFAULT_CONFIG.items()}
         try:
-            config = self.context.get_config()
-            if isinstance(config, dict):
-                return config
-            if hasattr(config, "get"):
-                return {key: config.get(key) for key in DEFAULT_CONFIG}
+            context_config = self.context.get_config()
+            if isinstance(context_config, dict):
+                plugin_config = context_config.get(PLUGIN_NAME)
+                if isinstance(plugin_config, dict):
+                    return {key: plugin_config.get(key, default) for key, default in DEFAULT_CONFIG.items()}
+            if hasattr(context_config, "get"):
+                plugin_config = context_config.get(PLUGIN_NAME)
+                if isinstance(plugin_config, dict):
+                    return {key: plugin_config.get(key, default) for key, default in DEFAULT_CONFIG.items()}
         except Exception:
             pass
         return dict(DEFAULT_CONFIG)
