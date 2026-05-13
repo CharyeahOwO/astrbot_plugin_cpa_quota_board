@@ -1,0 +1,62 @@
+{
+  "cpa_url": {
+    "description": "CLIProxyAPI 根地址，例如 https://api.nyaovo.com。不要填写 /management.html#/ 页面地址。",
+    "type": "string",
+    "hint": "https://api.example.com"
+  },
+  "cpa_password": {
+    "description": "CLIProxyAPI Management Key / 管理密钥",
+    "type": "string",
+    "hint": "不会写入日志或图片"
+  },
+  "verify_ssl": {
+    "description": "是否校验 SSL 证书",
+    "type": "bool",
+    "default": true
+  },
+  "request_timeout": {
+    "description": "请求超时时间（秒）",
+    "type": "int",
+    "default": 30
+  },
+  "poll_interval_seconds": {
+    "description": "后台巡检间隔（秒）",
+    "type": "int",
+    "default": 300
+  },
+  "warning_percent": {
+    "description": "低额度阈值百分比",
+    "type": "int",
+    "default": 20
+  },
+  "critical_percent": {
+    "description": "危险额度阈值百分比",
+    "type": "int",
+    "default": 5
+  },
+  "enable_quota_notify": {
+    "description": "是否启用后台额度通知",
+    "type": "bool",
+    "default": false
+  },
+  "enable_usage_statistics": {
+    "description": "是否开启 CLIProxyAPI 用量统计发布。开启后仅调用 /usage-statistics-enabled，不读取 /usage-queue。",
+    "type": "bool",
+    "default": false
+  },
+  "render_high_resolution": {
+    "description": "是否高清渲染图片",
+    "type": "bool",
+    "default": true
+  },
+  "max_accounts_per_provider": {
+    "description": "每类 provider 最多渲染多少个账号",
+    "type": "int",
+    "default": 20
+  },
+  "compact_mode_default": {
+    "description": "默认是否使用简洁模式",
+    "type": "bool",
+    "default": false
+  }
+}

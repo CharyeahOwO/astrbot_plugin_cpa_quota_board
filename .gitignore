@@ -206,6 +206,13 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# AstrBot plugin runtime data
+data/
+plugin_data/
+cache/
+notify_targets.json
+last_quota_state.json
+
 # PyPI configuration file
 .pypirc
 
