@@ -99,6 +99,7 @@ class CPAClient:
 
     async def api_call(self, auth: AuthFile, method: str, url: str, *, headers: dict[str, str] | None = None, data: Any = None) -> Any:
         payload: dict[str, Any] = {
+            "authIndex": auth.auth_index,
             "auth_index": auth.auth_index,
             "method": method.upper(),
             "url": url,
@@ -107,7 +108,11 @@ class CPAClient:
             payload["header"] = headers
         if data is not None:
             payload["data"] = data if isinstance(data, str) else json.dumps(data, ensure_ascii=False)
-        return self._unwrap_api_call_response(await self._request("POST", "api-call", json=payload))
+        result = await self._request("POST", "api-call", json=payload)
+        status_code = self._api_call_status_code(result)
+        if status_code and (status_code < 200 or status_code >= 300):
+            raise CPAClientError(self._api_call_error_message(result, status_code))
+        return self._unwrap_api_call_response(result)
 
     async def set_usage_statistics_enabled(self, enabled: bool) -> None:
         await self._request("PUT", "usage-statistics-enabled", json={"value": bool(enabled)})
@@ -174,7 +179,11 @@ class CPAClient:
 
     async def _fetch_codex(self, auth: AuthFile) -> list[QuotaItem]:
         try:
-            data = await self.api_call(auth, "GET", "https://chatgpt.com/backend-api/wham/usage", headers={"Authorization": "Bearer $TOKEN$"})
+            headers = {"Authorization": "Bearer $TOKEN$", "Content-Type": "application/json", "User-Agent": "codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal"}
+            account_id = self._find_codex_account_id(auth)
+            if account_id:
+                headers["Chatgpt-Account-Id"] = account_id
+            data = await self.api_call(auth, "GET", "https://chatgpt.com/backend-api/wham/usage", headers=headers)
         except CPAClientError as exc:
             return [QuotaItem(id="codex", label="Codex 额度", percent=None, status="error", raw_message=sanitize_text(exc))]
         items = self._parse_codex_quota(data)
@@ -196,8 +205,8 @@ class CPAClient:
             percent = self._extract_percent(entry)
             if percent is None and not self._looks_like_quota(entry):
                 continue
-            item_id = str(entry.get("id") or entry.get("name") or entry.get("model") or f"quota-{index + 1}")
-            label = str(entry.get("displayName") or entry.get("display_name") or entry.get("label") or entry.get("name") or entry.get("model") or self._default_google_label(provider_type))
+            item_id = str(entry.get("id") or entry.get("name") or entry.get("modelId") or entry.get("model_id") or entry.get("model") or f"quota-{index + 1}")
+            label = str(entry.get("displayName") or entry.get("display_name") or entry.get("label") or entry.get("name") or entry.get("modelId") or entry.get("model_id") or entry.get("model") or self._default_google_label(provider_type))
             reset_at = format_reset_time(entry.get("resetAt") or entry.get("reset_at") or entry.get("resetTime") or entry.get("refreshTime"))
             status = status_from_percent(percent, self.warning_percent, self.critical_percent)
             items.append(QuotaItem(id=item_id, label=label, percent=percent, reset_at=reset_at, status=status, raw_message=""))
@@ -212,25 +221,30 @@ class CPAClient:
     def _parse_codex_quota(self, data: Any) -> list[QuotaItem]:
         if not isinstance(data, dict):
             return []
+        source = data.get("rate_limit") if isinstance(data.get("rate_limit"), dict) else data.get("rateLimit") if isinstance(data.get("rateLimit"), dict) else data
         windows = []
         for key, label in (("primary_window", "Codex 5h"), ("secondary_window", "Codex 7d"), ("primaryWindow", "Codex 5h"), ("secondaryWindow", "Codex 7d")):
-            value = data.get(key)
+            value = source.get(key) if isinstance(source, dict) else None
             if isinstance(value, dict):
                 windows.append((key, label, value))
-        if not windows and any(key in data for key in ("remaining", "limit", "used", "percent")):
-            windows.append(("codex", "Codex 额度", data))
+        if not windows and isinstance(source, dict) and any(key in source for key in ("remaining", "limit", "used", "percent", "used_percent")):
+            windows.append(("codex", "Codex 额度", source))
         items: list[QuotaItem] = []
         for key, label, window in windows:
             percent = self._extract_percent(window)
-            reset_at = format_reset_time(window.get("reset_at") or window.get("resetAt") or window.get("end_time") or window.get("ends_at"))
+            reset_at = format_reset_time(window.get("reset_at") or window.get("resetAt") or window.get("end_time") or window.get("ends_at") or window.get("resets_at"))
             items.append(QuotaItem(id=key.replace("_window", ""), label=label, percent=percent, reset_at=reset_at, status=status_from_percent(percent, self.warning_percent, self.critical_percent), raw_message=""))
         return items
 
     def _extract_percent(self, data: dict[str, Any]) -> int | None:
-        for key in ("percent", "remaining_percent", "remainingPercent", "available_percent", "availablePercent", "usage_percentage"):
+        for key in ("percent", "remaining_percent", "remainingPercent", "remaining_fraction", "remainingFraction", "available_percent", "availablePercent"):
             percent = safe_percent(data.get(key))
             if percent is not None:
-                return 100 - percent if key == "usage_percentage" else percent
+                return percent
+        for key in ("usage_percentage", "used_percent", "usedPercent", "utilization", "utilization_percent"):
+            percent = safe_percent(data.get(key))
+            if percent is not None:
+                return 100 - percent
         remaining = data.get("remaining") or data.get("remaining_tokens") or data.get("available")
         limit = data.get("limit") or data.get("total") or data.get("quota")
         used = data.get("used") or data.get("usage") or data.get("consumed")
@@ -245,7 +259,7 @@ class CPAClient:
 
     def _looks_like_quota(self, data: dict[str, Any]) -> bool:
         keys = {str(key).lower() for key in data.keys()}
-        return bool(keys & {"limit", "total", "remaining", "remainingtokens", "remaining_tokens", "remainingpercent", "remaining_percent", "available", "availablepercent", "available_percent", "used", "usage", "consumed", "resetat", "reset_at", "resettime", "percent", "usage_percentage"})
+        return bool(keys & {"limit", "total", "remaining", "remainingtokens", "remaining_tokens", "remainingamount", "remaining_amount", "remainingfraction", "remaining_fraction", "remainingpercent", "remaining_percent", "available", "availablepercent", "available_percent", "used", "usage", "consumed", "resetat", "reset_at", "resettime", "percent", "usage_percentage", "used_percent", "usedpercent"})
 
     def _quota_candidates(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         candidates: list[dict[str, Any]] = []
@@ -285,7 +299,7 @@ class CPAClient:
         project_id = self._find_project_id(auth)
         body: dict[str, Any] = {}
         if project_id:
-            body["projectId"] = project_id
+            body["project"] = project_id
         return body
 
     def _find_project_id(self, auth: AuthFile) -> str:
@@ -297,6 +311,15 @@ class CPAClient:
                     return str(container[key])
         match = re.search(r"gemini-[^-]+-(.+?)(?:\.json)?$", auth.name)
         return match.group(1) if match else ""
+
+    def _find_codex_account_id(self, auth: AuthFile) -> str:
+        metadata = auth.raw.get("metadata", {}) if isinstance(auth.raw.get("metadata"), dict) else {}
+        attributes = auth.raw.get("attributes", {}) if isinstance(auth.raw.get("attributes"), dict) else {}
+        for container in (auth.raw, metadata, attributes):
+            for key in ("account_id", "accountId", "openai_account_id", "chatgpt_account_id"):
+                if container.get(key):
+                    return str(container[key])
+        return ""
 
     def _account_error(self, auth: AuthFile, message: Any) -> QuotaAccount:
         item = QuotaItem(id="error", label="额度查询异常", percent=None, status="error", raw_message=sanitize_text(message))
@@ -335,6 +358,32 @@ class CPAClient:
             if isinstance(value, (dict, list)):
                 return value
         return data
+
+    def _api_call_status_code(self, data: Any) -> int:
+        if not isinstance(data, dict):
+            return 0
+        value = data.get("statusCode") or data.get("status_code") or data.get("status")
+        try:
+            return int(value) if value is not None else 0
+        except (TypeError, ValueError):
+            return 0
+
+    def _api_call_error_message(self, data: Any, status_code: int) -> str:
+        body = self._unwrap_api_call_response(data)
+        message = ""
+        if isinstance(body, dict):
+            error = body.get("error")
+            if isinstance(error, dict):
+                message = str(error.get("message") or error.get("code") or "")
+            elif isinstance(error, str):
+                message = error
+            if not message:
+                message = str(body.get("message") or "")
+        elif isinstance(body, str):
+            message = body
+        if not message:
+            message = f"HTTP {status_code}"
+        return sanitize_text(f"api-call 返回 {status_code}: {message}")
 
     def _extract_auth_file_items(self, data: Any) -> list[Any]:
         if isinstance(data, list):
