@@ -106,7 +106,7 @@ class AuthFile:
         metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
         attributes = data.get("attributes") if isinstance(data.get("attributes"), dict) else {}
         name = str(data.get("name") or data.get("id") or "unknown")
-        auth_index = str(data.get("auth_index") or data.get("auth-index") or data.get("id") or name)
+        auth_index = str(data.get("auth_index") or data.get("auth-index") or data.get("authIndex") or data.get("index") or data.get("id") or name)
         provider = str(data.get("provider") or data.get("type") or metadata.get("provider") or metadata.get("type") or data.get("account_type") or metadata.get("account_type") or "unknown").lower()
         email = str(data.get("email") or metadata.get("email") or data.get("account") or metadata.get("account") or attributes.get("email") or "")
         return cls(

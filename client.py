@@ -18,12 +18,17 @@ except ImportError:
 
 PROVIDER_NAMES = {
     "antigravity": "Antigravity",
+    "claude": "Claude",
     "gemini": "Gemini",
     "gemini-cli": "Gemini CLI",
     "geminicli": "Gemini CLI",
+    "kimi": "Kimi",
+    "vertex": "Vertex",
     "codex": "Codex",
     "openai": "Codex",
 }
+
+QUOTA_PROVIDERS = {"antigravity", "gemini", "gemini-cli", "codex"}
 
 
 class CPAClientError(RuntimeError):
@@ -113,15 +118,15 @@ class CPAClient:
         except CPAClientError as exc:
             return self._error_report(str(exc))
 
-        supported = [auth for auth in auth_files if self._canonical_provider(auth.provider) in PROVIDER_NAMES and not auth.disabled]
-        if not supported:
+        active_auths = [auth for auth in auth_files if not auth.disabled]
+        if not active_auths:
             if auth_files:
                 providers = sorted({self._canonical_provider(auth.provider) for auth in auth_files})
-                return QuotaReport.empty(f"API 返回了 {len(auth_files)} 个账号，但未发现支持的 provider：{', '.join(providers)}")
+                return QuotaReport.empty(f"API 返回了 {len(auth_files)} 个账号，但账号均已禁用或不可用：{', '.join(providers)}")
             return QuotaReport.empty("API 返回为空，未发现可查询额度的账号。")
 
         grouped: dict[str, list[AuthFile]] = defaultdict(list)
-        for auth in supported:
+        for auth in active_auths:
             provider_type = self._canonical_provider(auth.provider)
             if len(grouped[provider_type]) < self.max_accounts_per_provider:
                 grouped[provider_type].append(auth)
@@ -147,7 +152,7 @@ class CPAClient:
         elif provider_type == "codex":
             items = await self._fetch_codex(auth)
         else:
-            items = [QuotaItem(id="quota", label="额度", percent=None, status="unknown", raw_message="暂未支持该 provider 的额度接口")]
+            items = [QuotaItem(id="quota", label="额度", percent=None, status="unknown", raw_message=f"暂未支持 provider={provider_type} 的额度接口")]
         return QuotaAccount(id=auth.id, name=auth.name, display_name=auth.display_name, status=account_status(items), items=items)
 
     async def _fetch_google_like(self, provider_type: str, auth: AuthFile) -> list[QuotaItem]:
@@ -240,7 +245,7 @@ class CPAClient:
 
     def _looks_like_quota(self, data: dict[str, Any]) -> bool:
         keys = {str(key).lower() for key in data.keys()}
-        return bool(keys & {"quota", "quotas", "limit", "remaining", "remainingpercent", "remaining_percent", "available", "used", "usage", "resetat", "reset_at", "percent", "ratelimits"})
+        return bool(keys & {"limit", "total", "remaining", "remainingtokens", "remaining_tokens", "remainingpercent", "remaining_percent", "available", "availablepercent", "available_percent", "used", "usage", "consumed", "resetat", "reset_at", "resettime", "percent", "usage_percentage"})
 
     def _quota_candidates(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         candidates: list[dict[str, Any]] = []
@@ -308,6 +313,10 @@ class CPAClient:
             return "gemini-cli"
         if value in {"openai", "codex-free", "codex-plus", "codex-pro", "codex-team"}:
             return "codex"
+        if value in {"google", "google-oauth"}:
+            return "gemini"
+        if value in {"claude-code", "anthropic"}:
+            return "claude"
         return value
 
     def _default_google_label(self, provider_type: str) -> str:
@@ -316,7 +325,7 @@ class CPAClient:
     def _unwrap_api_call_response(self, data: Any) -> Any:
         if not isinstance(data, dict):
             return data
-        for key in ("body", "data", "response"):
+        for key in ("body", "data", "response", "result", "output"):
             value = data.get(key)
             if isinstance(value, str):
                 try:
