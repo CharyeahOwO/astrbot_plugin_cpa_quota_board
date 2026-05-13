@@ -4,8 +4,12 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from models import QuotaReport
-from utils import atomic_write_json, read_json, utc_timestamp
+try:
+    from .models import QuotaReport
+    from .utils import atomic_write_json, read_json, utc_timestamp
+except ImportError:
+    from models import QuotaReport
+    from utils import atomic_write_json, read_json, utc_timestamp
 
 
 NOTIFY_TRANSITIONS = {

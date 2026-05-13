@@ -7,8 +7,12 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-from models import QuotaAccount, QuotaItem, QuotaProvider, QuotaReport
-from utils import cleanup_old_files, sanitize_text
+try:
+    from .models import QuotaAccount, QuotaItem, QuotaProvider, QuotaReport
+    from .utils import cleanup_old_files, sanitize_text
+except ImportError:
+    from models import QuotaAccount, QuotaItem, QuotaProvider, QuotaReport
+    from utils import cleanup_old_files, sanitize_text
 
 
 STATUS_COLORS = {
@@ -40,8 +44,12 @@ class QuotaCardRenderer:
         return self._render(filtered, "alert", "CPA 额度告警", "本次状态变化")
 
     def render_test_alert(self) -> Path:
-        from models import QuotaAccount, QuotaItem, QuotaProvider, QuotaReport, build_summary
-        from utils import now_text
+        try:
+            from .models import QuotaAccount, QuotaItem, QuotaProvider, QuotaReport, build_summary
+            from .utils import now_text
+        except ImportError:
+            from models import QuotaAccount, QuotaItem, QuotaProvider, QuotaReport, build_summary
+            from utils import now_text
 
         item = QuotaItem(id="test", label="测试额度项", percent=4, reset_at="05/13 18:25", status="critical", raw_message="测试通知")
         account = QuotaAccount(id="test", name="test@example.com", display_name="test@example.com", status="critical", items=[item])
@@ -177,7 +185,10 @@ class QuotaCardRenderer:
                     accounts.append(QuotaAccount(id=account.id, name=account.name, display_name=account.display_name, status=account.status, items=items))
             if accounts:
                 providers.append(QuotaProvider(name=provider.name, type=provider.type, accounts=accounts))
-        from models import build_summary
+        try:
+            from .models import build_summary
+        except ImportError:
+            from models import build_summary
 
         return QuotaReport(generated_at=report.generated_at, summary=build_summary(providers), providers=providers, message=report.message or "当前没有低额度、危险、耗尽或异常账号。")
 
@@ -192,7 +203,10 @@ class QuotaCardRenderer:
                     accounts.append(QuotaAccount(id=account.id, name=account.name, display_name=account.display_name, status=account.status, items=items))
             if accounts:
                 providers.append(QuotaProvider(name=provider.name, type=provider.type, accounts=accounts))
-        from models import build_summary
+        try:
+            from .models import build_summary
+        except ImportError:
+            from models import build_summary
 
         return QuotaReport(generated_at=report.generated_at, summary=build_summary(providers), providers=providers, message="本次没有需要通知的状态变化。")
 

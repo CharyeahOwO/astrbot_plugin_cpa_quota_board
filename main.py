@@ -9,10 +9,16 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.star import Context, Star, register
 
-from client import CPAClient
-from renderer import QuotaCardRenderer
-from state import QuotaStateStore
-from utils import ConfigError, normalize_cpa_url, plugin_data_dir, sanitize_text
+try:
+    from .client import CPAClient
+    from .renderer import QuotaCardRenderer
+    from .state import QuotaStateStore
+    from .utils import ConfigError, normalize_cpa_url, plugin_data_dir, sanitize_text
+except ImportError:
+    from client import CPAClient
+    from renderer import QuotaCardRenderer
+    from state import QuotaStateStore
+    from utils import ConfigError, normalize_cpa_url, plugin_data_dir, sanitize_text
 
 
 PLUGIN_NAME = "astrbot_plugin_cpa_quota_board"

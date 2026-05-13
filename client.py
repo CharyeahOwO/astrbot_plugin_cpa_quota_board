@@ -8,8 +8,12 @@ from typing import Any
 
 import aiohttp
 
-from models import AuthFile, QuotaAccount, QuotaItem, QuotaProvider, QuotaReport, account_status, build_summary, status_from_percent
-from utils import format_reset_time, management_url, now_text, redact_obj, safe_percent, sanitize_text, sanitize_url
+try:
+    from .models import AuthFile, QuotaAccount, QuotaItem, QuotaProvider, QuotaReport, account_status, build_summary, status_from_percent
+    from .utils import format_reset_time, management_url, now_text, redact_obj, safe_percent, sanitize_text, sanitize_url
+except ImportError:
+    from models import AuthFile, QuotaAccount, QuotaItem, QuotaProvider, QuotaReport, account_status, build_summary, status_from_percent
+    from utils import format_reset_time, management_url, now_text, redact_obj, safe_percent, sanitize_text, sanitize_url
 
 
 PROVIDER_NAMES = {
