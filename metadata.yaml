@@ -6,6 +6,4 @@ author: CharyeahOwO
 repo: https://github.com/CharyeahOwO/astrbot_plugin_cpa_quota_board
 display_name: CPA 额度看板
 short_desc: CLIProxyAPI / CPAMC 额度查询、卡片展示和额度预警插件
-support_platforms:
-  - aiocqhttp
 astrbot_version: ">=4.9.2"
