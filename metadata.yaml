@@ -2,5 +2,8 @@ name: astrbot_plugin_cpa_quota_board
 desc: CPA 额度看板，查询 CLIProxyAPI / CPAMC 额度并在额度变化时主动通知。
 help: 使用 /额度、/cpa、/额度刷新、/开启cpa预警、/额度状态。
 version: v0.1.0
-author: MuLingQwQ
-repo: https://github.com/MuLingQwQ/astrbot_plugin_cpa_quota_board
+author: CharyeahOwO
+repo: https://github.com/CharyeahOwO/astrbot_plugin_cpa_quota_board
+display_name: CPA 额度看板
+short_desc: CLIProxyAPI / CPAMC 额度查询、卡片展示和额度预警插件
+astrbot_version: ">=4.9.2"
