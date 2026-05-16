@@ -26,30 +26,9 @@ NOTIFY_TRANSITIONS = {
 class QuotaStateStore:
     def __init__(self, data_dir: Path):
         self.data_dir = data_dir
-        self.notify_targets_path = data_dir / "notify_targets.json"
         self.last_state_path = data_dir / "last_quota_state.json"
         self._lock = asyncio.Lock()
         self._initialized = self.last_state_path.exists()
-
-    async def list_notify_targets(self) -> list[str]:
-        async with self._lock:
-            data = read_json(self.notify_targets_path, {"targets": []})
-            targets = data.get("targets", []) if isinstance(data, dict) else []
-            return sorted({str(item) for item in targets if str(item).strip()})
-
-    async def add_notify_target(self, target: str) -> None:
-        async with self._lock:
-            data = read_json(self.notify_targets_path, {"targets": []})
-            targets = set(data.get("targets", []) if isinstance(data, dict) else [])
-            targets.add(target)
-            atomic_write_json(self.notify_targets_path, {"targets": sorted(targets), "updated_at": utc_timestamp()})
-
-    async def remove_notify_target(self, target: str) -> None:
-        async with self._lock:
-            data = read_json(self.notify_targets_path, {"targets": []})
-            targets = set(data.get("targets", []) if isinstance(data, dict) else [])
-            targets.discard(target)
-            atomic_write_json(self.notify_targets_path, {"targets": sorted(targets), "updated_at": utc_timestamp()})
 
     async def diff_and_save(self, report: QuotaReport) -> list[dict[str, Any]]:
         async with self._lock:

@@ -32,10 +32,15 @@ PLUGIN_NAME = "astrbot_plugin_cpa_quota_board"
 class CPAQuotaBoardPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
         super().__init__(context)
+        self._config_obj = config
         self.config = self._load_config(config)
         self.data_dir = plugin_data_dir(PLUGIN_NAME)
         self.state = QuotaStateStore(self.data_dir)
-        self.renderer = QuotaCardRenderer(self.data_dir, high_resolution=self._bool_config("render_high_resolution", True))
+        self.renderer = QuotaCardRenderer(
+            self.data_dir,
+            high_resolution=self._bool_config("render_high_resolution", True),
+            font_path=str(self.config.get("font_path", "")),
+        )
         self._poll_task: asyncio.Task[None] | None = None
         self._last_report = None
         self._last_fetch_at = 0.0
@@ -43,7 +48,6 @@ class CPAQuotaBoardPlugin(Star):
         self._cache_seconds = 10
 
     async def initialize(self):
-        await self._sync_usage_statistics_option()
         if self._bool_config("enable_quota_notify", False):
             self._poll_task = asyncio.create_task(self._poll_loop())
             logger.info("CPA 额度看板后台巡检已启动")
@@ -52,31 +56,31 @@ class CPAQuotaBoardPlugin(Star):
     async def quota(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
         args = self._parse_args(event)
         provider = args[0] if args else ""
-        yield await self._quota_image_result(event, compact=self._bool_config("compact_mode_default", False), force=False, provider=provider)
+        yield await self._quota_image_result(event, force=False, provider=provider)
 
     @filter.command("cpa额度")
     async def cpa_quota(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
         args = self._parse_args(event)
         provider = args[0] if args else ""
-        yield await self._quota_image_result(event, compact=self._bool_config("compact_mode_default", False), force=False, provider=provider)
+        yield await self._quota_image_result(event, force=False, provider=provider)
+
+    @filter.command("cpa")
+    async def cpa(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        args = self._parse_args(event)
+        provider = args[0] if args else ""
+        yield await self._quota_image_result(event, force=False, provider=provider)
 
     @filter.command("quota")
     async def quota_en(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
         args = self._parse_args(event)
         provider = args[0] if args else ""
-        yield await self._quota_image_result(event, compact=self._bool_config("compact_mode_default", False), force=False, provider=provider)
-
-    @filter.command("额度简洁")
-    async def quota_compact(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        args = self._parse_args(event)
-        provider = args[0] if args else ""
-        yield await self._quota_image_result(event, compact=True, force=False, provider=provider)
+        yield await self._quota_image_result(event, force=False, provider=provider)
 
     @filter.command("额度刷新")
     async def quota_refresh(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
         args = self._parse_args(event)
         provider = args[0] if args else ""
-        yield await self._quota_image_result(event, compact=self._bool_config("compact_mode_default", False), force=True, provider=provider)
+        yield await self._quota_image_result(event, force=True, provider=provider)
 
     @filter.command("额度摘要")
     async def quota_dashboard(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
@@ -89,7 +93,7 @@ class CPAQuotaBoardPlugin(Star):
         args = self._parse_args(event)
         provider = ""
         page = 0
-        page_size = 5
+        page_size = 1
         numbers: list[int] = []
 
         for arg in args:
@@ -113,15 +117,26 @@ class CPAQuotaBoardPlugin(Star):
 
         yield await self._quota_detail_pages_result(event, provider=provider, page=page, page_size=page_size)
 
-    @filter.command("额度通知开启")
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("开启cpa预警")
     async def notify_enable(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        await self.state.add_notify_target(event.unified_msg_origin)
-        yield event.plain_result("已开启当前会话的 CPA 额度通知。")
+        target = event.unified_msg_origin
+        targets = self._notify_targets()
+        if target not in targets:
+            targets.append(target)
+            self._set_config_value("notify_whitelist", sorted(targets))
+        if not self._bool_config("enable_quota_notify", False):
+            self._set_config_value("enable_quota_notify", True)
+        self._ensure_poll_task()
+        yield event.plain_result("已开启当前会话的 CPA 额度预警，并已写入配置白名单。")
 
-    @filter.command("额度通知关闭")
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("关闭cpa预警")
     async def notify_disable(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        await self.state.remove_notify_target(event.unified_msg_origin)
-        yield event.plain_result("已关闭当前会话的 CPA 额度通知。")
+        target = event.unified_msg_origin
+        targets = [item for item in self._notify_targets() if item != target]
+        self._set_config_value("notify_whitelist", sorted(targets))
+        yield event.plain_result("已关闭当前会话的 CPA 额度预警，并已从配置白名单移除。")
 
     @filter.command("额度测试通知")
     async def notify_test(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
@@ -130,15 +145,14 @@ class CPAQuotaBoardPlugin(Star):
 
     @filter.command("额度状态")
     async def quota_status(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        targets = await self.state.list_notify_targets()
+        targets = self._notify_targets()
         enabled = "开启" if self._bool_config("enable_quota_notify", False) else "关闭"
         current = "已开启" if event.unified_msg_origin in targets else "未开启"
         text = (
             f"额度通知：{enabled}\n"
-            f"CLIProxyAPI 用量统计发布：{'开启' if self._bool_config('enable_usage_statistics', False) else '关闭'}\n"
             f"当前会话：{current}\n"
             f"巡检间隔：{self._int_config('poll_interval_seconds', 300)} 秒\n"
-            f"通知目标数量：{len(targets)}\n"
+            f"白名单会话数量：{len(targets)}\n"
             f"上次巡检时间：{self._last_poll_time}"
         )
         yield event.plain_result(text)
@@ -186,7 +200,7 @@ class CPAQuotaBoardPlugin(Star):
         path = self.renderer.render_overview(report)
         return event.chain_result(self._image_chain(path))
 
-    async def _quota_image_result(self, event: AstrMessageEvent, *, compact: bool, force: bool, provider: str = ""):
+    async def _quota_image_result(self, event: AstrMessageEvent, *, force: bool, provider: str = ""):
         try:
             report = await self._fetch_report(force=force)
             if provider:
@@ -195,8 +209,8 @@ class CPAQuotaBoardPlugin(Star):
                     report.message = f"未找到匹配 '{provider}' 的额度数据"
 
             if self._response_format() == "text":
-                return event.plain_result(format_quota_report(report, compact=compact))
-            path = self.renderer.render_compact(report) if compact else self.renderer.render_overview(report)
+                return event.plain_result(format_quota_report(report, compact=False))
+            path = self.renderer.render_overview(report)
             return event.chain_result(self._image_chain(path))
         except Exception as exc:
             return await self._handle_render_error(event, exc, "查询")
@@ -263,7 +277,7 @@ class CPAQuotaBoardPlugin(Star):
                 self._log_report_summary(report)
                 self._last_poll_time = report.generated_at
                 changes = await self.state.diff_and_save(report)
-                targets = await self.state.list_notify_targets()
+                targets = self._notify_targets()
                 if changes and targets:
                     if self._response_format() == "text":
                         chain = MessageChain().message(format_alert_report(report, changes))
@@ -280,15 +294,6 @@ class CPAQuotaBoardPlugin(Star):
             except Exception as exc:
                 logger.warning("CPA 额度看板后台巡检失败：%s", sanitize_text(exc))
             await asyncio.sleep(interval)
-
-    async def _sync_usage_statistics_option(self) -> None:
-        try:
-            await self._client().set_usage_statistics_enabled(self._bool_config("enable_usage_statistics", False))
-            logger.info("CPA 额度看板已同步 CLIProxyAPI 用量统计发布开关")
-        except ConfigError:
-            return
-        except Exception as exc:
-            logger.warning("CPA 额度看板同步用量统计发布开关失败：%s", sanitize_text(exc))
 
     def _log_report_summary(self, report: QuotaReport) -> None:
         lines = [f"providers={len(report.providers)} summary={report.summary}"]
@@ -325,8 +330,37 @@ class CPAQuotaBoardPlugin(Star):
         return MessageChain().file_image(str(path))
 
     def _response_format(self) -> str:
-        value = str(self.config.get("response_format", "text")).strip().lower()
+        value = str(self.config.get("response_format", "image")).strip().lower()
         return "image" if value in {"image", "img", "图片"} else "text"
+
+    def _notify_targets(self) -> list[str]:
+        value = self.config.get("notify_whitelist", [])
+        if isinstance(value, str):
+            targets = [item.strip() for item in value.replace("\n", ",").split(",")]
+        elif isinstance(value, list):
+            targets = [str(item).strip() for item in value]
+        else:
+            targets = []
+        return sorted({item for item in targets if item})
+
+    def _set_config_value(self, key: str, value: Any) -> None:
+        self.config[key] = value
+        if self._config_obj is not None:
+            try:
+                self._config_obj[key] = value
+            except Exception:
+                pass
+            save = getattr(self._config_obj, "save_config", None)
+            if callable(save):
+                try:
+                    save()
+                except Exception as exc:
+                    logger.warning("CPA 额度看板保存配置失败：%s", sanitize_text(exc))
+
+    def _ensure_poll_task(self) -> None:
+        if self._poll_task is None or self._poll_task.done():
+            self._poll_task = asyncio.create_task(self._poll_loop())
+            logger.info("CPA 额度看板后台巡检已启动")
 
     def _load_config(self, config: Any | None = None) -> dict[str, Any]:
         if isinstance(config, dict):
@@ -369,9 +403,9 @@ DEFAULT_CONFIG = {
     "warning_percent": 20,
     "critical_percent": 5,
     "enable_quota_notify": False,
-    "enable_usage_statistics": False,
-    "response_format": "text",
+    "notify_whitelist": [],
+    "response_format": "image",
     "render_high_resolution": True,
+    "font_path": "",
     "max_accounts_per_provider": 20,
-    "compact_mode_default": False,
 }

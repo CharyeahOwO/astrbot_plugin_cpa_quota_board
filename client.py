@@ -114,9 +114,6 @@ class CPAClient:
             raise CPAClientError(self._api_call_error_message(result, status_code))
         return self._unwrap_api_call_response(result)
 
-    async def set_usage_statistics_enabled(self, enabled: bool) -> None:
-        await self._request("PUT", "usage-statistics-enabled", json={"value": bool(enabled)})
-
     async def fetch_all_quotas(self) -> QuotaReport:
         try:
             auth_files = await self.get_auth_files()

@@ -1,68 +1,97 @@
 {
   "cpa_url": {
-    "description": "CLIProxyAPI 根地址，例如 https://api.example.com。不要填写 /management.html#/ 页面地址。",
+    "name": "服务根地址",
+    "description": "CLIProxyAPI / CPAMC 的根地址。",
     "type": "string",
-    "hint": "https://api.example.com"
+    "hint": "例如：https://api.example.com。不要填写 /management.html#/ 页面地址。",
+    "obvious_hint": true
   },
   "cpa_password": {
-    "description": "CLIProxyAPI Management Key / 管理密钥",
+    "name": "管理密钥",
+    "description": "CLIProxyAPI Management Key。",
     "type": "string",
-    "hint": "不会写入日志或图片"
+    "hint": "用于访问 /v0/management 接口；插件会避免写入日志或图片。",
+    "obvious_hint": true
   },
   "verify_ssl": {
-    "description": "是否校验 SSL 证书",
+    "name": "校验 SSL",
+    "description": "请求 HTTPS 接口时是否校验证书。",
     "type": "bool",
     "default": true
   },
   "request_timeout": {
-    "description": "请求超时时间（秒）",
+    "name": "请求超时",
+    "description": "单次请求最长等待时间，单位秒。",
     "type": "int",
-    "default": 30
+    "default": 30,
+    "hint": "建议 10-60。"
   },
   "poll_interval_seconds": {
-    "description": "后台巡检间隔（秒）",
+    "name": "巡检间隔",
+    "description": "后台额度巡检间隔，单位秒。",
     "type": "int",
-    "default": 300
+    "default": 300,
+    "hint": "最低按 30 秒执行；建议 300 秒以上。"
   },
   "warning_percent": {
-    "description": "低额度阈值百分比",
+    "name": "低额度阈值",
+    "description": "剩余额度小于等于该百分比时标记为警告。",
     "type": "int",
-    "default": 20
+    "default": 20,
+    "hint": "例如 20 表示剩余 20% 告警。"
   },
   "critical_percent": {
-    "description": "危险额度阈值百分比",
+    "name": "危险阈值",
+    "description": "剩余额度小于等于该百分比时标记为危险。",
     "type": "int",
-    "default": 5
+    "default": 5,
+    "hint": "例如 5 表示剩余 5% 进入危险状态。"
   },
   "enable_quota_notify": {
-    "description": "是否启用后台额度通知",
+    "name": "后台通知",
+    "description": "开启后后台巡检额度变化，并向白名单会话推送。",
     "type": "bool",
     "default": false
   },
-  "enable_usage_statistics": {
-    "description": "是否开启 CLIProxyAPI 用量统计发布。开启后仅调用 /usage-statistics-enabled，不读取 /usage-queue。",
-    "type": "bool",
-    "default": false
+  "notify_whitelist": {
+    "name": "预警白名单",
+    "description": "允许接收 CPA 额度预警的会话 ID 列表。",
+    "type": "list",
+    "items": {
+      "type": "string"
+    },
+    "default": [],
+    "hint": "管理员在会话中使用 /开启cpa预警 或 /关闭cpa预警 会同步更新此列表。"
   },
   "response_format": {
-    "description": "查询结果返回格式：text 为文本，image 为图片。默认 text，便于清楚显示错误原因。",
+    "name": "返回格式",
+    "description": "额度查询的回复形式。",
     "type": "string",
-    "default": "text",
-    "hint": "text 或 image"
+    "default": "image",
+    "options": [
+      "text",
+      "image"
+    ],
+    "hint": "text 便于排错；image 适合日常查看。"
   },
   "render_high_resolution": {
-    "description": "是否高清渲染图片",
+    "name": "高清渲染",
+    "description": "图片先按高分辨率绘制再缩放。",
     "type": "bool",
     "default": true
   },
-  "max_accounts_per_provider": {
-    "description": "每类 provider 最多渲染多少个账号",
-    "type": "int",
-    "default": 20
+  "font_path": {
+    "name": "字体文件路径",
+    "description": "可选。指定用于图片渲染的字体文件。",
+    "type": "string",
+    "default": "",
+    "hint": "留空默认使用 requirements.txt 安装的 Noto Sans SC。仅在需要覆盖字体时填写容器内字体路径。"
   },
-  "compact_mode_default": {
-    "description": "默认是否使用简洁模式",
-    "type": "bool",
-    "default": false
+  "max_accounts_per_provider": {
+    "name": "每类账号上限",
+    "description": "每个 provider 最多查询并展示的账号数量。",
+    "type": "int",
+    "default": 20,
+    "hint": "账号很多时可降低该值，避免图片过长。"
   }
 }

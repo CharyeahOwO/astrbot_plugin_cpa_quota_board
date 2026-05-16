@@ -2,9 +2,11 @@ from __future__ import annotations
 
 try:
     from .models import QuotaReport
+    from .transforms import merge_gemini_series
     from .utils import sanitize_text
 except ImportError:
     from models import QuotaReport
+    from transforms import merge_gemini_series
     from utils import sanitize_text
 
 
@@ -18,6 +20,7 @@ STATUS_TEXT = {
 
 
 def format_quota_report(report: QuotaReport, *, compact: bool = False, title: str = "CPA 额度看板") -> str:
+    report = merge_gemini_series(report)
     lines = [title, f"生成时间：{report.generated_at}"]
     summary = report.summary
     lines.append(
