@@ -54,42 +54,49 @@ class CPAQuotaBoardPlugin(Star):
 
     @filter.command("额度")
     async def quota(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        """查询 CPA 额度看板，可附加 provider 关键词筛选。"""
         args = self._parse_args(event)
         provider = args[0] if args else ""
         yield await self._quota_image_result(event, force=False, provider=provider)
 
     @filter.command("cpa额度")
     async def cpa_quota(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        """查询 CPA 额度看板，兼容 /额度。"""
         args = self._parse_args(event)
         provider = args[0] if args else ""
         yield await self._quota_image_result(event, force=False, provider=provider)
 
     @filter.command("cpa")
     async def cpa(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        """查询 CPA 额度看板，兼容 /额度。"""
         args = self._parse_args(event)
         provider = args[0] if args else ""
         yield await self._quota_image_result(event, force=False, provider=provider)
 
     @filter.command("quota")
     async def quota_en(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        """查询 CPA 额度看板，英文兼容指令。"""
         args = self._parse_args(event)
         provider = args[0] if args else ""
         yield await self._quota_image_result(event, force=False, provider=provider)
 
     @filter.command("额度刷新")
     async def quota_refresh(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        """跳过短缓存，重新拉取并渲染 CPA 额度。"""
         args = self._parse_args(event)
         provider = args[0] if args else ""
         yield await self._quota_image_result(event, force=True, provider=provider)
 
     @filter.command("额度摘要")
     async def quota_dashboard(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        """只展示重点额度摘要，适合快速查看异常项。"""
         args = self._parse_args(event)
         provider = args[0] if args else ""
         yield await self._quota_dashboard_result(event, force=False, provider=provider)
 
     @filter.command("额度详情分页")
     async def quota_detail_pages(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        """分页查看完整额度明细，支持页码和每页账号数。"""
         args = self._parse_args(event)
         provider = ""
         page = 0
@@ -120,6 +127,7 @@ class CPAQuotaBoardPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("开启cpa预警")
     async def notify_enable(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        """管理员指令：将当前会话加入 CPA 额度预警白名单。"""
         target = event.unified_msg_origin
         targets = self._notify_targets()
         if target not in targets:
@@ -133,6 +141,7 @@ class CPAQuotaBoardPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("关闭cpa预警")
     async def notify_disable(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        """管理员指令：将当前会话移出 CPA 额度预警白名单。"""
         target = event.unified_msg_origin
         targets = [item for item in self._notify_targets() if item != target]
         self._set_config_value("notify_whitelist", sorted(targets))
@@ -140,11 +149,13 @@ class CPAQuotaBoardPlugin(Star):
 
     @filter.command("额度测试通知")
     async def notify_test(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        """向当前会话发送一条 CPA 额度预警测试图片。"""
         path = self.renderer.render_test_alert()
         yield event.chain_result(self._image_chain(path))
 
     @filter.command("额度状态")
     async def quota_status(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        """查看 CPA 额度预警开关、白名单数量和上次巡检时间。"""
         targets = self._notify_targets()
         enabled = "开启" if self._bool_config("enable_quota_notify", False) else "关闭"
         current = "已开启" if event.unified_msg_origin in targets else "未开启"
