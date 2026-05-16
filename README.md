@@ -68,6 +68,13 @@
 https://api.example.com/management.html#/
 ```
 
+## to-do list
+
+- [ ] LLM总结额度信息
+- [ ] 查看周调用，日调用量
+- [ ] 更好的额度警报
+
+
 本插件不会主动打印 Management Key、OAuth token、access token 或 refresh token。
 
 ## 许可证
