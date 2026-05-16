@@ -72,4 +72,4 @@ https://api.example.com/management.html#/
 
 ## 许可证
 
-MIT License
+LICENSE
