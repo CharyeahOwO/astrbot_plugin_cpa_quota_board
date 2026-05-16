@@ -17,7 +17,7 @@
 
 | 聊天效果 | 面板效果 |
 | :---: | :---: |
-| ![1](assets\image.png) | ![2](assets\image2.png) |
+| ![1](assets/image.png) | ![2](assets/image2.png) |
 
 
 ## 安装
