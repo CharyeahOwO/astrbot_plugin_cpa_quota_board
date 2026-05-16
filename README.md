@@ -1,6 +1,6 @@
 # CPA 额度看板
 
-用于 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 的 CLIProxyAPI / CPAMC 额度看板插件。
+用于 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 的 [CLIProxyAPI / CPAMC](https://github.com/router-for-me/CLIProxyAPI) 额度看板插件。
 
 ## ✨ 功能特性
 
